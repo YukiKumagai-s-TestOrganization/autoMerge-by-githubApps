@@ -5,11 +5,23 @@ on:
     branches:
       - test
 
+env:
+  AUTO_MERGE_BRANCH: "main"
+
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Check branch names
+        id: check_branch_names
+        run: |
+          echo "GITHUB_REF: ${GITHUB_REF}"
+          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed -e "s/^refs\/heads\///g")
+          echo "BRANCH_NAME: ${BRANCH_NAME}"
+
+          echo "::set-output name=BRANCH_NAME::${BRANCH_NAME}"
 
       - name: Generate token
         id: generate_token
@@ -21,8 +33,36 @@ jobs:
           # installation_id: 1337
           # Optional (defaults to the current repository).
           # repository: "owner/repo"
+
       - name: Use token
         env:
-          TOKEN: ${{ steps.generate_token.outputs.token }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
-          echo "The generated token is masked: ${TOKEN}"
+          echo "The generated token is masked: ${GH_TOKEN}"
+
+      - name: Create Pull Request
+        id: create_pull_request
+        env:
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: |
+          cat <<- EOF > body
+          ${{ steps.check_branch_names.outputs.BRANCH_NAME }} に進捗があったので${{ env.AUTO_MERGE_BRANCH }}ブランチに取り込みます。
+
+          # parse用
+          branch: ${{ steps.check_branch_names.outputs.BRANCH_NAME }}
+          EOF
+
+          URL=$( \
+            gh pr create \
+              --base ${{ env.AUTO_MERGE_BRANCH }} \
+              --title "[${{ steps.check_branch_names.outputs.BRANCH_NAME }}] ${{ env.AUTO_MERGE_BRANCH }}へ取り込み" \
+              --body-file body \
+              --label "${{ steps.check_branch_names.outputs.MSV_CODE }} ${{ env.AUTO_MERGE_BRANCH }} release" | \
+            tail -n 1 \
+          )
+          echo "::set-output name=URL::${URL}"
+
+      - name: merge PR
+        env:
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: gh pr merge ${{ steps.create_pull_request.outputs.URL }} --merge --admin
