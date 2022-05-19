@@ -46,14 +46,25 @@ jobs:
           branch: ${{ steps.check_branch_names.outputs.BRANCH_NAME }}
           EOF
 
+          LABEL="${{ steps.check_branch_names.outputs.MSV_CODE }} ${{ env.AUTO_MERGE_BRANCH }} release"
+          if gh label list | cut -f 1 | grep -e "^${LABEL}$"; then
+            :
+          else
+            set +e
+            # https://github.com/cli/cli/issues/5633
+            gh label create "${LABEL}"
+            set -e
+          fi
+
           URL=$( \
             gh pr create \
               --base ${{ env.AUTO_MERGE_BRANCH }} \
               --title "[${{ steps.check_branch_names.outputs.BRANCH_NAME }}] ${{ env.AUTO_MERGE_BRANCH }}へ取り込み" \
               --body-file body \
-              --label "${{ steps.check_branch_names.outputs.MSV_CODE }} ${{ env.AUTO_MERGE_BRANCH }} release" | \
+              --label "${LABEL}" | \
             tail -n 1 \
           )
+          echo "URL: ${URL}"
           echo "::set-output name=URL::${URL}"
 
       - name: merge PR
