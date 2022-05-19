@@ -1,12 +1,27 @@
 name: github-apps-test
 
-on: [push]
+on:
+  push:
+    branches:
+      - test
+
+env:
+  AUTO_MERGE_BRANCH: "main"
 
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Check branch names
+        id: check_branch_names
+        run: |
+          echo "GITHUB_REF: ${GITHUB_REF}"
+          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed -e "s/^refs\/heads\///g")
+          echo "BRANCH_NAME: ${BRANCH_NAME}"
+
+          echo "::set-output name=BRANCH_NAME::${BRANCH_NAME}"
 
       - name: Generate token
         id: generate_token
@@ -18,8 +33,41 @@ jobs:
           # installation_id: 1337
           # Optional (defaults to the current repository).
           # repository: "owner/repo"
-      - name: Use token
+
+      - name: Create Pull Request
+        id: create_pull_request
         env:
-          TOKEN: ${{ steps.generate_token.outputs.token }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
-          echo "The generated token is masked: ${TOKEN}"
+          cat <<- EOF > body
+          ${{ steps.check_branch_names.outputs.BRANCH_NAME }} に進捗があったので${{ env.AUTO_MERGE_BRANCH }}ブランチに取り込みます。
+
+          # parse用
+          branch: ${{ steps.check_branch_names.outputs.BRANCH_NAME }}
+          EOF
+
+          LABEL="${{ steps.check_branch_names.outputs.BRANCH_NAME }} ${{ env.AUTO_MERGE_BRANCH }} release"
+          if gh label list | cut -f 1 | grep -e "^${LABEL}$"; then
+            :
+          else
+            set +e
+            # https://github.com/cli/cli/issues/5633
+            gh label create "${LABEL}"
+            set -e
+          fi
+
+          URL=$( \
+            gh pr create \
+              --base ${{ env.AUTO_MERGE_BRANCH }} \
+              --title "[${{ steps.check_branch_names.outputs.BRANCH_NAME }}] ${{ env.AUTO_MERGE_BRANCH }}へ取り込み" \
+              --body-file body \
+              --label "${LABEL}" | \
+            tail -n 1 \
+          )
+          echo "URL: ${URL}"
+          echo "::set-output name=URL::${URL}"
+
+      - name: merge PR
+        env:
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: gh pr merge ${{ steps.create_pull_request.outputs.URL }} --merge --admin
