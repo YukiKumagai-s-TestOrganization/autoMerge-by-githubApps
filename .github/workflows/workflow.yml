@@ -34,12 +34,6 @@ jobs:
           # Optional (defaults to the current repository).
           # repository: "owner/repo"
 
-      - name: Use token
-        env:
-          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
-        run: |
-          echo "The generated token is masked: ${GH_TOKEN}"
-
       - name: Create Pull Request
         id: create_pull_request
         env:
