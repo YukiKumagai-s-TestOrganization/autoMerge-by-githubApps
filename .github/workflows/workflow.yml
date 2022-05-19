@@ -1,6 +1,9 @@
 name: github-apps-test
 
-on: [push]
+on:
+  push:
+    branches:
+      - test
 
 jobs:
   main:
